@@ -105,11 +105,16 @@ def parse_status(homework):
             'Неверный статус домашней работы: нет ключа "homework_name"'
         )
     homework_name = homework['homework_name']
-    if homework['status'] is not None:
-        verdict = HOMEWORK_VERDICTS.get(homework['status'])
+    if 'status' not in homework:
+        raise KeyError(
+            'Неверный статус домашней работы: нет ключа "status"'
+        )
+    status = homework['status']
+    if status is not None:
+        verdict = HOMEWORK_VERDICTS.get(status)
         if not verdict:
             raise HomeworkVerdictNotFound(f'Не найден статус домашней работы'
-                                          f' {homework["status"]}')
+                                          f' {status}')
     logger.info('Проверка успешно завершена')
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
