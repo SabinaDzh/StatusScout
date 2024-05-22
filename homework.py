@@ -6,6 +6,7 @@ from http import HTTPStatus
 
 import requests
 from telebot import TeleBot
+from telebot.apihelper import ApiException
 from dotenv import load_dotenv
 
 from exceptions import HomeworkVerdictNotFound
@@ -31,7 +32,7 @@ HOMEWORK_VERDICTS = {
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    '%(asctime)s - %(name)s - %(funcName)s - %(lineno)d - %(levelname)s - %(message)s')
 handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 handler.setFormatter(formatter)
@@ -44,11 +45,13 @@ def check_tokens():
         'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
         'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
     }
-    for name_token, token in env_token.items():
-        if token is None:
-            message = f'Переменная окружения {name_token} отсутствует'
-            logger.critical(f'{message}. Работа программы завершена')
-            raise AssertionError(message)
+    missing_tokens = [
+        name_token for name_token, token in env_token.items()
+        if token is None]
+    if missing_tokens:
+        message = f'Отсутствуют переменные окружения: {", ".join(missing_tokens)}'
+        logger.critical(f'{message}. Работа программы завершена')
+        raise AssertionError(message)
 
 
 def send_message(bot, message):
@@ -56,7 +59,7 @@ def send_message(bot, message):
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug(f'Сообщение успешно отправлено: {message}')
-    except Exception as error:
+    except ApiException as error:
         logger.error(
             f'Ошибка при отправке сообщения: {error}'
         )
@@ -69,35 +72,44 @@ def get_api_answer(timestamp):
         response = requests.get(ENDPOINT, headers=HEADERS, params=from_date)
     except requests.exceptions.RequestException as error:
         raise ConnectionError(
-            f'Ошибка при запросе к {ENDPOINT} - {error}')
+            f'Запрос к {ENDPOINT} с параметрами {timestamp} '
+            f'провалился с ошибкой {error}')
     if response.status_code != HTTPStatus.OK:
-        raise ValueError('Ошибка ответа API')
+        raise ValueError(f'Ошибка ответа API. Код: {response.status_code},'
+                         f' причина: {response.reason}')
     return response.json()
 
 
 def check_response(response):
     """Проверяет ответ API на соответствие ожидаемым типам данных."""
-    if type(response) is not dict:
+    logger.info('Начало проверки запроса API')
+    if not isinstance(response, dict):
         raise TypeError(f'Неверный тип ответа API {type(response)}')
     if 'homeworks' not in response:
         raise KeyError('Отсутствует ключ homeworks в ответе API')
-    if type(response.get('homeworks')) is not list:
-        raise TypeError('Неверный тип ответа API')
+    if not isinstance(response.get('homeworks'), list):
+        raise TypeError(f'Неверный тип ответа API '
+                        f'{type(response.get("homeworks"))}. Ожидается: list')
     if response.get('current_date') is None:
         raise KeyError('Отсутствует ключ current_date в ответе API')
+    logger.info('Проверка успешно завершена')
     return response.get('homeworks')
 
 
 def parse_status(homework):
     """Извлекает из информации о домашней работе статус этой работы."""
-    try:
-        homework_name = homework['homework_name']
-    except KeyError as error:
-        raise KeyError(f'Неверный статус домашней работы {error}')
-    verdict = HOMEWORK_VERDICTS.get(homework['status'])
-    if not verdict:
-        raise HomeworkVerdictNotFound(f'Не найден статус домашней работы'
-                                      f' {homework["status"]}')
+    logger.info('Начало проверки статуса работы')
+    if 'homework_name' not in homework:
+        raise KeyError(
+            'Неверный статус домашней работы: отсутствует ключ "homework_name"'
+        )
+    homework_name = homework['homework_name']
+    if homework['status'] is not None:
+        verdict = HOMEWORK_VERDICTS.get(homework['status'])
+        if not verdict:
+            raise HomeworkVerdictNotFound(f'Не найден статус домашней работы'
+                                          f' {homework["status"]}')
+    logger.info('Проверка успешно завершена')
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -118,6 +130,7 @@ def main():
                 last_message = message
             else:
                 logging.debug('Статус домашнего задания не изменился')
+            timestamp = response['current_date']
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logging.error(message)
