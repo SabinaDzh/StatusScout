@@ -32,7 +32,8 @@ HOMEWORK_VERDICTS = {
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(funcName)s - %(lineno)d - %(levelname)s - %(message)s')
+    '%(asctime)s - %(name)s - %(funcName)s - '
+    '%(lineno)d - %(levelname)s - %(message)s')
 handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 handler.setFormatter(formatter)
@@ -49,9 +50,9 @@ def check_tokens():
         name_token for name_token, token in env_token.items()
         if token is None]
     if missing_tokens:
-        message = f'Отсутствуют переменные окружения: {", ".join(missing_tokens)}'
-        logger.critical(f'{message}. Работа программы завершена')
-        raise AssertionError(message)
+        text = f'Отсутствуют переменные окружения: {", ".join(missing_tokens)}'
+        logger.critical(f'{text}. Работа программы завершена')
+        raise AssertionError(text)
 
 
 def send_message(bot, message):
@@ -101,7 +102,7 @@ def parse_status(homework):
     logger.info('Начало проверки статуса работы')
     if 'homework_name' not in homework:
         raise KeyError(
-            'Неверный статус домашней работы: отсутствует ключ "homework_name"'
+            'Неверный статус домашней работы: нет ключа "homework_name"'
         )
     homework_name = homework['homework_name']
     if homework['status'] is not None:
